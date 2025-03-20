@@ -36,10 +36,10 @@ build_exe.bat
 ECyberDownloader/
 │── 📂 src/
 │   ├── main.py  # 실행 파일
-│   ├── downloader.py  # 다운로드 관련 코드
-│   ├── encryption.py  # 암호화 기능
-│   ├── ui.py  # GUI 코드
-│   ├── utils.py  # 기타 유틸리티 함수
+│   ├── mainwindow.py  # 메인윈도우(UI)
+│   ├── encryption.py  # 암호화 관련
+│   ├── downloader.py  # Selenium 제어 로직
+│   ├── worker.py  # QThread 기반 작업자
 │── 📂 assets/  # 아이콘, 리소스 폴더
 │── requirements.txt  # 의존성 목록
 │── README.md  # 프로젝트 설명서
