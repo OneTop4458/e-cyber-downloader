@@ -1,6 +1,7 @@
 # --- 파일명: mainwindow.py ---
 import os
 import json
+import re
 import time
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWidgets import QMessageBox
@@ -387,8 +388,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "사용법 안내:\n\n"
             "1. 사용자 이름과 비밀번호를 입력하고 '로그인 정보 저장'을 선택하면 암호화되어 저장됩니다.\n"
             "2. '과목 정보 불러오기' 버튼을 누르면 워커가 Chrome을 띄워 로그인 후 전체 과목 목록을 불러옵니다.\n"
-            "3. 특정 과목 선택 시 사용 가능한 주차를 가져와 UI에 표시합니다.\n"
-            "4. 다운로드 폴더를 지정하고 '다운로드 시작'을 누르면 해당 과목/주차 동영상이 다운로드 및 MP3 변환됩니다.\n"
+            "3. 특정 과목 선택 시, 해당 과목의 주차/강의 스크립트를 모두 로드하고, UI에는 '사용 가능한 주차'만 보여줍니다.\n"
+            "4. 다운로드 폴더를 지정 후 '다운로드 시작'을 누르면 해당 과목/주차의 강의를 다운로드하며, mp3 변환까지 수행합니다.\n"
             "5. 진행 상황은 로그 창에 표시됩니다.\n"
             "6. Options 메뉴에서 Chrome 강제 종료, Headless Mode, 로그 레벨 등을 설정할 수 있습니다.\n"
             "7. 2차 본인인증 창이 뜨면, 인증 후 확인 버튼을 눌러주세요."
@@ -491,7 +492,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def load_subjects(self):
         """
-        과목 정보 불러오기: QThread에서 setup + login + 과목목록 로드
+        전체 과목 목록 불러오기(Worker.setup -> get_subject_info_list).
         """
         self.save_credentials()
 
@@ -507,7 +508,7 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             self.downloader_worker.moveToThread(self.worker_thread)
 
-            # --- 시그널 연결 ---
+            # 시그널 연결
             self.downloader_worker.log_signal.connect(self.append_log)
             self.downloader_worker.subjects_signal.connect(self.update_subjects)
             self.downloader_worker.weeks_update_signal.connect(self.update_weeks)
@@ -546,25 +547,27 @@ class MainWindow(QtWidgets.QMainWindow):
             self.append_log("[WARNING] 과목 정보를 불러오지 못했습니다.")
             self.start_download_button.setEnabled(False)
 
+        # 주차 콤보박스 초기화
         self.week_combo.clear()
         self.week_combo.setEnabled(False)
 
     def subject_changed(self, index):
         """
-        특정 과목 선택 시 주차 정보 로드
+        특정 과목 선택 시: Worker에서 주차/강의 정보를 로드 -> UI에 weeks 업데이트
         """
         self.week_combo.clear()
         self.week_combo.setEnabled(False)
 
         if index == 0:
             # "전체 과목"
-            self.append_log("전체 과목이 선택되었습니다. (주차 정보는 '전체 주차'로 처리됩니다.)")
+            self.append_log("전체 과목이 선택되었습니다. (전체 주차)")
             self.start_download_button.setEnabled(True)
         else:
             subject_info = self.subjects[index - 1]
-            self.append_log(f"과목 '{subject_info['과목']}'이(가) 선택되었습니다. 주차 정보를 불러옵니다...")
-            self.start_download_button.setEnabled(False)
+            self.append_log(f"과목 '{subject_info['과목']}' 로딩 중...")
 
+            # "주차 정보"(실제로는 주차+강의 스크립트) 로드 -> weeks_update_signal
+            self.start_download_button.setEnabled(False)
             QtCore.QMetaObject.invokeMethod(
                 self.downloader_worker, "load_weeks",
                 QtCore.Qt.QueuedConnection,
@@ -573,12 +576,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def update_weeks(self, weeks):
         """
-        주차 콤보박스 업데이트
+        Worker로부터 받은 '사용 가능한 주차 목록'을 UI 콤보박스에 표시
         """
         self.week_combo.blockSignals(True)
         self.week_combo.clear()
-        self.week_combo.addItem("전체 주차", userData=0)
 
+        self.week_combo.addItem("전체 주차", userData=0)
         if weeks:
             for w in weeks:
                 self.week_combo.addItem(f"{w}주", userData=w)
@@ -593,13 +596,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def start_download(self):
         """
-        선택한 과목 + 주차 기준으로 다운로드 시작
+        선택 과목과 주차에 대한 다운로드 실행
+        (이미 Worker 측에서 '주차->강의 스크립트'를 캐싱해 둠)
         """
         if not self.download_dir or not os.path.isdir(self.download_dir):
             QMessageBox.warning(self, "다운로드 폴더", "먼저 다운로드 폴더를 지정해 주세요.")
             return
 
-        # 다운로드 시작 버튼 비활성화 (완료 후 다시 활성화)
+        # 버튼 비활성화
         self.start_download_button.setEnabled(False)
 
         # 과목 정보
@@ -608,13 +612,13 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             subject_info = self.subjects[self.subject_combo.currentIndex() - 1]
 
-        # 주차 정보
+        # 주차 정보 (0이면 "전체 주차")
         if self.week_combo.isEnabled() and self.week_combo.currentData() is not None:
             start_week = self.week_combo.currentData()
         else:
-            start_week = 0  # “전체 주차”
+            start_week = 0
 
-        self.append_log("다운로드 시작...")
+        self.append_log(f"다운로드 시작... (과목={subject_info['과목']}, start_week={start_week})")
 
         QtCore.QMetaObject.invokeMethod(
             self.downloader_worker, "perform_download",
@@ -625,8 +629,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_download_finished(self):
         """
-        Worker에서 finished_signal을 받으면 실행되는 슬롯.
-        다운로드가 모두 끝났으므로 버튼을 재활성화한다.
+        모든 다운로드가 끝났을 때 버튼을 다시 활성화
         """
         self.start_download_button.setEnabled(True)
         self.append_log("다운로드 작업이 완료되었습니다.")

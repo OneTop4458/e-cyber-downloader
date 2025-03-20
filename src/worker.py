@@ -36,7 +36,8 @@ class DownloaderWorker(QtCore.QObject):
 
         self.downloader = None
         self.all_subjects = []
-        self.weeks_cache = {}
+        # lectures_cache[eclassRoom] = { week_num: [ {title, script}, ... ], ... }
+        self.lectures_cache = {}
 
     def auth_callback(self):
         self.auth_confirmation_needed.emit()
@@ -45,7 +46,7 @@ class DownloaderWorker(QtCore.QObject):
     @QtCore.pyqtSlot()
     def setup(self):
         """
-        쓰레드 시작 시 1회 호출됨
+        쓰레드 시작 시 1회 호출
         """
         self.downloader = ECyberDownloader(
             log_callback=self.log_signal.emit,
@@ -67,8 +68,7 @@ class DownloaderWorker(QtCore.QObject):
             self.all_subjects = subjects
 
             # 오버레이 메시지 업데이트
-            self.downloader.update_overlay_message("원하는 과목을 선택하세요")
-
+            self.downloader.update_overlay_message("프로그램에서 원하는 과목을 선택하세요 페이지 임의 조작 금지..")
             self.subjects_signal.emit(subjects)
         except Exception as e:
             self.log_signal.emit(f"[WARNING] 과목 정보 불러오기 오류: {str(e)}")
@@ -76,43 +76,72 @@ class DownloaderWorker(QtCore.QObject):
     @QtCore.pyqtSlot(dict)
     def load_weeks(self, subject_info):
         """
-        주차 정보 로드 (캐싱)
+        주차 + 강의(스크립트) 전부 미리 로드하고, UI에는 '사용 가능한 주차'만 보내줌
         """
-        key = subject_info.get("eclassRoom", "")
-        if key in self.weeks_cache:
-            self.log_signal.emit(f"(캐시) {subject_info['과목']}의 주차 정보: {self.weeks_cache[key]}")
-            self.weeks_update_signal.emit(self.weeks_cache[key])
-        else:
-            try:
-                weeks = self.downloader.get_available_weeks(subject_info)
-                self.weeks_cache[key] = weeks
-                self.log_signal.emit(f"{subject_info['과목']}의 주차 정보 불러옴: {weeks}")
-                self.weeks_update_signal.emit(weeks)
-            except Exception as e:
-                self.log_signal.emit(f"[WARNING] 주차 정보 불러오기 오류 ({subject_info['과목']}): {str(e)}")
-                self.weeks_update_signal.emit([])
+        eclass_key = subject_info.get("eclassRoom", "")
+        if eclass_key in self.lectures_cache:
+            # 이미 파싱해놨음
+            lectures_map = self.lectures_cache[eclass_key]
+            weeks = sorted(lectures_map.keys())
+            self.log_signal.emit(f"(캐시) {subject_info['과목']} 주차 정보: {weeks}")
+            self.weeks_update_signal.emit(weeks)
+            return
+
+        try:
+            # 새로 파싱
+            lectures_map = self.downloader.get_lectures_by_week(subject_info)
+            self.lectures_cache[eclass_key] = lectures_map
+
+            # UI에 표시할 주차 목록
+            weeks = sorted(lectures_map.keys())
+            self.log_signal.emit(f"{subject_info['과목']} 주차/강의 불러옴 => 주차 {weeks}")
+            self.weeks_update_signal.emit(weeks)
+        except Exception as e:
+            self.log_signal.emit(f"[WARNING] 주차/강의 정보 불러오기 오류 ({subject_info['과목']}): {str(e)}")
+            self.weeks_update_signal.emit([])
 
     @QtCore.pyqtSlot(object, int)
     def perform_download(self, subject_info, start_week):
         """
-        다운로드 진행
+        start_week:
+          0 => 모든 주차
+          n => 딱 n 주차만
         """
-        if subject_info.get("과목", "") == "전체":
+        eclass_key = subject_info.get("eclassRoom", "")
+        lectures_map = self.lectures_cache.get(eclass_key, {})
+
+        if subject_info.get("과목") == "전체":
+            # 전체 과목 순회
             for subj in self.all_subjects:
-                current_start = None if start_week == 0 else start_week
+                eclass_key2 = subj["eclassRoom"]
+                map2 = self.lectures_cache.get(eclass_key2, {})
+                filtered = {}
+
+                if start_week == 0:
+                    filtered = map2
+                else:
+                    # 딱 해당 주차만
+                    if start_week in map2:
+                        filtered = { start_week: map2[start_week] }
+
                 self.log_signal.emit(
-                    f"전체 과목 모드: '{subj['과목']}' 다운로드 시작 (start_week={current_start})"
+                    f"[전체 과목] {subj['과목']} => 다운로드 주차 {list(filtered.keys())}"
                 )
-                self.downloader.perform_subject_actions(
-                    subj, start_week=current_start
-                )
-            self.log_signal.emit("전체 과목 다운로드 완료.")
+                self.downloader.perform_lectures_actions(subj, filtered)
+
         else:
-            self.downloader.perform_subject_actions(
-                subject_info,
-                start_week=None if start_week == 0 else start_week
+            # 단일 과목
+            filtered_map = {}
+            if start_week == 0:
+                filtered_map = lectures_map
+            else:
+                if start_week in lectures_map:
+                    filtered_map = { start_week: lectures_map[start_week] }
+
+            self.log_signal.emit(
+                f"[단일 과목] {subject_info['과목']} => 다운로드 주차 {list(filtered_map.keys())}"
             )
-            self.log_signal.emit(f"'{subject_info['과목']}' 다운로드 완료.")
+            self.downloader.perform_lectures_actions(subject_info, filtered_map)
 
         self.finished_signal.emit()
 
