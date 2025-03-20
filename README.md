@@ -1,6 +1,6 @@
 # ECyberDownloader
 
-![ECyberDownloader Logo](assets/icon.ico)
+![ECyberDownloader Logo](assets/downloadfolderblank_99350.ico)
 
 ECyberDownloader는 가톨릭대학교 e-Cyber 강의 자료를 자동으로 다운로드하는 프로그램입니다.
 
@@ -45,24 +45,12 @@ ECyberDownloader/
 │── README.md  # 프로젝트 설명서
 ```
 
-## ⚙ 설정 파일 (`config/config.json`)
-```json
-{
-  "download_folder": "C:/ECyberDownloads",
-  "save_credentials": true,
-  "theme": "light"
-}
-```
-
 ## 📝 사용법
-1. `config.json`을 편집하여 다운로드 폴더 설정
-2. 실행 후 로그인 정보 입력
-3. 다운로드할 강의 선택 후 시작
+1. 실행 후 로그인 정보 입력
+2. 다운로드할 강의 선택 후 시작
 
 ## 🛠 문제 해결
-- **로그인 오류 발생 시**: `credentials.json`을 삭제하고 다시 시도
-- **다운로드 실패**: `Chrome WebDriver`가 최신인지 확인 (`chromedriver_autoinstaller` 사용)
-- **exe 실행 오류**: `build_exe.bat` 실행 후 `dist/ECyberDownloader.exe` 확인
+- 문제 발생 시 Issue 생성 혹은 PR 부탁드립니다.
 
 ## 📜 라이선스
 MIT License
