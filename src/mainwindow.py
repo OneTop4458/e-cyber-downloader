@@ -693,7 +693,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     else:
                         self.append_log("업데이트가 취소되었습니다.")
                 else:
-                    self.append_log("현재 최신 버전입니다.")
+                    self.append_log(f"현재 최신 버전입니다. (v{CURRENT_VERSION})")
             else:
                 self.append_log("버전 정보를 불러올 수 없습니다.")
         except Exception as e:

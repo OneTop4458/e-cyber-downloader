@@ -19,7 +19,7 @@ from selenium.common.exceptions import (
 )
 
 # 버전 체크용 상수
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "1.0.1"
 VERSION_URL = "https://raw.githubusercontent.com/OneTop4458/e-cyber-downloader/refs/heads/main/version.json"
 
 
@@ -535,20 +535,36 @@ class ECyberDownloader:
     def download_mp4(self, url: str, file_name: str):
         """
         분할 mp4 다운로드
+        ※ 만약 파일 열기나 다운로드 중에 에러가 나면 return으로 빠져나옴.
         """
         try:
-            response = requests.get(url, stream=True)
-            total_size = int(response.headers.get("content-length", 0))
-            block_size = 1024
+            response = requests.get(url, stream=True, timeout=10)
+            response.raise_for_status()  # 4xx/5xx 에러 발생 시 예외
+        except Exception as e:
+            self.log(f"HTTP 요청 실패: {str(e)} - {url}")
+            return  # 여기서 곧바로 중단
+
+        total_size = int(response.headers.get("content-length", 0))
+        block_size = 1024
+
+        # 파일 열기
+        try:
             with open(file_name, "wb") as mp4_file:
-                with tqdm.tqdm(total=total_size, unit="B", unit_scale=True,
-                               desc=file_name, ascii=True) as progress_bar:
-                    for data in response.iter_content(block_size):
-                        mp4_file.write(data)
-                        progress_bar.update(len(data))
+                # with tqdm.tqdm(total=total_size, unit="B", unit_scale=True,
+                #                desc=file_name, ascii=True) as progress_bar:
+                #     for data in response.iter_content(block_size):
+                #         mp4_file.write(data)
+                #         progress_bar.update(len(data))
+                for chunk in response.iter_content(block_size):
+                    if not chunk:
+                        continue
+                    mp4_file.write(chunk)
             self.log(f"{file_name} 다운로드 완료.")
         except Exception as e:
-            self.log(f"다운로드 실패: {str(e)}")
+            # 파일 열기나 쓰기 과정에서 문제가 생겼다면
+            self.log(f"다운로드 실패: {str(e)} - {file_name}")
+            # 에러 발생 시 중단(return)해서 이후 NoneType 문제 방지
+            return
 
     def get_video_duration(self, file_path: str):
         """
