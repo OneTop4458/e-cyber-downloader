@@ -14,7 +14,7 @@ ECyberDownloader는 가톨릭대학교 e-Cyber 강의 자료를 자동으로 다
 
 ## 📦 설치 및 실행 방법
 
-### 1️⃣ 필수 의존성 설치
+### 1️⃣ 필수 의존성 설치 (TODO)
 Python 3.8+ 버전이 필요합니다.
 ```bash
 pip install -r requirements.txt
@@ -28,7 +28,15 @@ python src/main.py
 ### 3️⃣ EXE 파일 생성 (선택)
 PyInstaller를 사용하여 exe 파일을 생성할 수 있습니다.
 ```bash
-build_exe.bat
+cd src
+pyinstaller main.py ^
+  --onefile --noconsole ^
+  --icon=..\assets\downloadfolderblank_99350.ico ^
+  --paths=. ^
+  --hidden-import=mainwindow ^
+  --hidden-import=worker ^
+  --hidden-import=downloader ^
+  --hidden-import=encryption
 ```
 
 ## 📁 프로젝트 폴더 구조
@@ -48,19 +56,6 @@ ECyberDownloader/
 ## 📝 사용법
 1. 실행 후 로그인 정보 입력
 2. 다운로드할 강의 선택 후 시작
-
-## 📝 빌드 방법
-```bash
-cd src
-pyinstaller main.py ^
-  --onefile --noconsole ^
-  --icon=..\assets\downloadfolderblank_99350.ico ^
-  --paths=. ^
-  --hidden-import=mainwindow ^
-  --hidden-import=worker ^
-  --hidden-import=downloader ^
-  --hidden-import=encryption
-```
 
 ## 🛠 문제 해결
 - 문제 발생 시 Issue 생성 혹은 PR 부탁드립니다.

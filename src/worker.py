@@ -111,32 +111,41 @@ class DownloaderWorker(QtCore.QObject):
         lectures_map = self.lectures_cache.get(eclass_key, {})
 
         if subject_info.get("과목") == "전체":
-            # 전체 과목 순회
             for subj in self.all_subjects:
                 eclass_key2 = subj["eclassRoom"]
-                map2 = self.lectures_cache.get(eclass_key2, {})
-                filtered = {}
+                # 주차 정보가 캐시에 없으면 즉시 수집
+                if eclass_key2 not in self.lectures_cache:
+                    new_map = self.downloader.get_lectures_by_week(subj)
+                    self.lectures_cache[eclass_key2] = new_map
 
+                # 가져온 강의 맵
+                map2 = self.lectures_cache.get(eclass_key2, {})
+                # 전체 주차 or 특정 주차 필터링
                 if start_week == 0:
                     filtered = map2
                 else:
-                    # 딱 해당 주차만
+                    filtered = {}
                     if start_week in map2:
-                        filtered = { start_week: map2[start_week] }
+                        filtered = {start_week: map2[start_week]}
 
                 self.log_signal.emit(
                     f"[전체 과목] {subj['과목']} => 다운로드 주차 {list(filtered.keys())}"
                 )
                 self.downloader.perform_lectures_actions(subj, filtered)
-
         else:
-            # 단일 과목
-            filtered_map = {}
+            # 단일 과목 다운로드
+            # 필요하면 여기서도 캐시를 갱신(사용자가 UI에서 주차 정보를 안 불러왔을 수도 있으므로)
+            if not lectures_map:
+                new_map = self.downloader.get_lectures_by_week(subject_info)
+                self.lectures_cache[eclass_key] = new_map
+                lectures_map = new_map
+
             if start_week == 0:
                 filtered_map = lectures_map
             else:
+                filtered_map = {}
                 if start_week in lectures_map:
-                    filtered_map = { start_week: lectures_map[start_week] }
+                    filtered_map = {start_week: lectures_map[start_week]}
 
             self.log_signal.emit(
                 f"[단일 과목] {subject_info['과목']} => 다운로드 주차 {list(filtered_map.keys())}"

@@ -655,13 +655,28 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         메인 윈도우 종료 시 크롬 드라이버 종료 및 쓰레드 정리
         """
-        self.force_stop_chrome()
-        if self.downloader_worker:
-            self.downloader_worker.quit()
-        if self.worker_thread:
-            self.worker_thread.quit()
-            if not self.worker_thread.wait(3000):
-                self.append_log("[WARNING] Worker thread가 제시간에 종료되지 않았습니다.")
+        self.append_log("[INFO] 프로그램 종료를 시도합니다...")
+
+        # 1) Worker가 동작 중이면 안전하게 종료 시도
+        if self.downloader_worker is not None:
+            try:
+                # Worker 내부의 downloader.quit()에서 Selenium driver를 닫도록 함
+                self.downloader_worker.quit()
+            except Exception as e:
+                self.append_log(f"[WARNING] downloader_worker 종료 중 오류: {e}")
+
+        # 2) QThread 종료 (백그라운드 Worker thread)
+        if self.worker_thread is not None:
+            try:
+                self.worker_thread.requestInterruption()
+                self.worker_thread.quit()
+                # 3초 정도 대기
+                if not self.worker_thread.wait(3000):
+                    self.append_log("[WARNING] Worker thread가 제시간에 종료되지 않았습니다.")
+            except Exception as e:
+                self.append_log(f"[WARNING] Worker thread 종료 중 오류: {e}")
+
+        # 3) 최종 이벤트 accept (창을 닫음)
         event.accept()
 
     def check_for_update(self):
