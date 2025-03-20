@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import datetime
 import os
+import subprocess
 import json
 import re
 import time
@@ -715,7 +716,6 @@ class MainWindow(QtWidgets.QMainWindow):
         # 1) Worker가 동작 중이면 안전하게 종료 시도
         if self.downloader_worker is not None:
             try:
-                # Worker 내부의 downloader.quit()에서 Selenium driver를 닫도록 함
                 self.downloader_worker.quit()
             except Exception as e:
                 self.append_log(f"[WARNING] downloader_worker 종료 중 오류: {e}")
@@ -725,13 +725,17 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 self.worker_thread.requestInterruption()
                 self.worker_thread.quit()
-                # 3초 정도 대기
                 if not self.worker_thread.wait(3000):
                     self.append_log("[WARNING] Worker thread가 제시간에 종료되지 않았습니다.")
             except Exception as e:
                 self.append_log(f"[WARNING] Worker thread 종료 중 오류: {e}")
 
-        # 3) 최종 이벤트 accept (창을 닫음)
+        # 3) chromedriver.exe 프로세스 모두 강제 종료
+        try:
+            subprocess.call("taskkill /f /im chromedriver.exe", shell=True)
+        except Exception as e:
+            self.append_log(f"[WARNING] chromedriver 종료 중 오류: {e}")
+
         event.accept()
 
     def check_for_update(self):
@@ -754,10 +758,12 @@ class MainWindow(QtWidgets.QMainWindow):
                         f"업데이트 노트:\n{notes}\n\n"
                         "업데이트 하시겠습니까?"
                     )
-                    ret = QMessageBox.question(
-                        self, "업데이트 안내", msg,
-                        QMessageBox.Yes | QMessageBox.No
-                    )
+                    dlg = QMessageBox(self)
+                    dlg.setWindowTitle("업데이트 안내")
+                    dlg.setText(msg)
+                    dlg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                    dlg.setWindowFlags(dlg.windowFlags() | QtCore.Qt.WindowStaysOnTopHint)
+                    ret = dlg.exec_()
                     if ret == QMessageBox.Yes:
                         self.perform_update(download_url, latest_version)
                     else:
@@ -769,70 +775,70 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as e:
             self.append_log(f"버전 체크 중 오류 발생: {e}")
 
-def perform_update(self, download_url, latest_version):
+    def perform_update(self, download_url, latest_version):
+        """
+        업데이트 파일(자기 자신 새 버전)을 다운로드하여 현재 실행 파일을 교체하는 작업을 진행하는 동안,
+        별도의 업데이트 진행 UI를 띄워 진행률과 로그를 출력합니다.
+        """
+        try:
+            # 업데이트 진행 다이얼로그 생성 및 표시
+            progress_dialog = UpdateProgressDialog(self)
+            progress_dialog.show()
+
+            def update_progress(value):
+                progress_dialog.set_progress(value)
+
+            progress_dialog.append_log("업데이트 파일 다운로드 중...")
+            response = requests.get(download_url, stream=True, timeout=30)
+            response.raise_for_status()
+
+            import sys
+            if getattr(sys, 'frozen', False):
+                current_exe = sys.executable
+            else:
+                current_exe = os.path.abspath(__file__)
+            current_dir = os.path.dirname(current_exe)
+
+            update_temp = os.path.join(current_dir, f"update_{latest_version}.exe")
+            total_size = int(response.headers.get("content-length", 0))
+            downloaded = 0
+
+            with open(update_temp, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            percentage = int(downloaded * 100 / total_size)
+                            update_progress(percentage)
+            progress_dialog.append_log(f"업데이트 파일 다운로드 완료: {update_temp}")
+
+            progress_dialog.append_log("업데이트를 실행합니다...")
+
+            # 배치 파일 생성: 현재 실행 파일 교체 후 재시작
+            bat_file = os.path.join(current_dir, "update.bat")
+            bat_contents = f"""@echo off
+    ping 127.0.0.1 -n 5 > nul
+    move /y "{update_temp}" "{current_exe}"
+    start "" "{current_exe}"
+    del "%~f0"
     """
-    업데이트 파일(자기 자신 새 버전)을 다운로드하여 현재 실행 파일을 교체하는 작업을 진행하는 동안,
-    별도의 업데이트 진행 UI를 띄워 진행률과 로그를 출력합니다.
-    """
-    try:
-        # 업데이트 진행 다이얼로그 생성 및 표시
-        progress_dialog = UpdateProgressDialog(self)
-        progress_dialog.show()
+            with open(bat_file, "w", encoding="utf-8") as f:
+                f.write(bat_contents)
+            progress_dialog.append_log("업데이트 배치 파일 생성 완료.")
 
-        def update_progress(value):
-            progress_dialog.set_progress(value)
-
-        progress_dialog.append_log("업데이트 파일 다운로드 중...")
-        response = requests.get(download_url, stream=True, timeout=30)
-        response.raise_for_status()
-
-        import sys
-        if getattr(sys, 'frozen', False):
-            current_exe = sys.executable
-        else:
-            current_exe = os.path.abspath(__file__)
-        current_dir = os.path.dirname(current_exe)
-
-        update_temp = os.path.join(current_dir, f"update_{latest_version}.exe")
-        total_size = int(response.headers.get("content-length", 0))
-        downloaded = 0
-
-        with open(update_temp, "wb") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if total_size > 0:
-                        percentage = int(downloaded * 100 / total_size)
-                        update_progress(percentage)
-        progress_dialog.append_log(f"업데이트 파일 다운로드 완료: {update_temp}")
-
-        progress_dialog.append_log("업데이트를 실행합니다...")
-
-        # 배치 파일 생성: 현재 실행 파일 교체 후 재시작
-        bat_file = os.path.join(current_dir, "update.bat")
-        bat_contents = f"""@echo off
-ping 127.0.0.1 -n 5 > nul
-move /y "{update_temp}" "{current_exe}"
-start "" "{current_exe}"
-del "%~f0"
-"""
-        with open(bat_file, "w", encoding="utf-8") as f:
-            f.write(bat_contents)
-        progress_dialog.append_log("업데이트 배치 파일 생성 완료.")
-
-        import ctypes
-        ret = ctypes.windll.shell32.ShellExecuteW(
-            None, "runas", bat_file, None, current_dir, 0
-        )
-        if ret <= 32:
-            progress_dialog.append_log("업데이트 실행 실패. 관리자 권한이 필요합니다.")
-        else:
-            progress_dialog.append_log("업데이트 실행 성공. 프로그램이 종료됩니다.")
-            # 잠시 대기 후 종료
-            QtCore.QTimer.singleShot(3000, QtCore.QCoreApplication.quit)
-    except Exception as e:
-        progress_dialog.append_log(f"업데이트 수행 중 오류 발생: {e}")
+            import ctypes
+            ret = ctypes.windll.shell32.ShellExecuteW(
+                None, "runas", bat_file, None, current_dir, 0
+            )
+            if ret <= 32:
+                progress_dialog.append_log("업데이트 실행 실패. 관리자 권한이 필요합니다.")
+            else:
+                progress_dialog.append_log("업데이트 실행 성공. 프로그램이 종료됩니다.")
+                # 잠시 대기 후 종료
+                QtCore.QTimer.singleShot(3000, QtCore.QCoreApplication.quit)
+        except Exception as e:
+            progress_dialog.append_log(f"업데이트 수행 중 오류 발생: {e}")
 
 
 class UpdateProgressDialog(QtWidgets.QDialog):

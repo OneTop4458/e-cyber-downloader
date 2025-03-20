@@ -20,7 +20,7 @@ from selenium.common.exceptions import (
 )
 
 # 버전 체크용 상수
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "1.1.0"
 VERSION_URL = "https://raw.githubusercontent.com/OneTop4458/e-cyber-downloader/refs/heads/main/version.json"
 
 

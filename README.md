@@ -29,7 +29,7 @@ python src/main.py
 PyInstaller를 사용하여 exe 파일을 생성할 수 있습니다.
 ```bash
 cd src
-pyinstaller main.py --onefile --noconsole --icon=../assets/downloadfolderblank_99350.ico
+pyinstaller main.py --onefile --noconsole --icon=../assets/downloadfolderblank_99350.ico --noupx
 ```
 
 ## 📁 프로젝트 폴더 구조
