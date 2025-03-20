@@ -17,7 +17,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ECyber Downloader")
-        self.resize(900, 700)
+        self.resize(500, 600)
 
         # 기본값 설정
         self.download_dir = os.getcwd()
@@ -496,6 +496,11 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         self.save_credentials()
 
+        # 이미 다운 중이면 막아주거나, 또는 반환
+        if self.start_download_button.isEnabled():
+            self.append_log("[INFO] 이미 다운로드 중이므로 과목을 다시 불러올 수 없습니다.")
+            return
+
         username = self.username_input.text().strip()
         password = self.password_input.text().strip()
 
@@ -605,6 +610,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # 버튼 비활성화
         self.start_download_button.setEnabled(False)
+        self.load_subjects_button.setEnabled(False)
+        self.subject_combo.setEnabled(False)
+        self.week_combo.setEnabled(False)
 
         # 과목 정보
         if self.subject_combo.currentIndex() == 0:
@@ -632,10 +640,15 @@ class MainWindow(QtWidgets.QMainWindow):
         모든 다운로드가 끝났을 때 버튼을 다시 활성화
         """
         self.start_download_button.setEnabled(True)
+        self.load_subjects_button.setEnabled(True)
+        self.subject_combo.setEnabled(True)
+        self.week_combo.setEnabled(True)
         self.append_log("다운로드 작업이 완료되었습니다.")
 
     def show_auth_confirmation_dialog(self):
-        QMessageBox.information(self, "본인인증", "본인인증 창이 표시되었습니다.\n수동 인증 후 '확인' 버튼을 누르세요.")
+        QMessageBox.information(self, "본인인증", "본인인증 창이 표시되었습니다.\n"
+        "웹 페이지에서 수동 인증 후 아래 'OK' 버튼을 누르세요.\n"
+        "※ 웹 페이지에서 인증 번호 입력 후 확인 버튼 까지 눌러야 합니다.")
         self.downloader_worker.auth_confirmed_signal.emit()
 
     def closeEvent(self, event):
