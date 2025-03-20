@@ -1,15 +1,13 @@
 # --- 파일명: mainwindow.py ---
 import os
 import json
-import re
 import time
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWidgets import QMessageBox
 
-# 내부 모듈 임포트
 from encryption import fernet
 from worker import DownloaderWorker
-from downloader import CURRENT_VERSION, VERSION_URL  # 버전 체크용
+from downloader import CURRENT_VERSION, VERSION_URL
 
 import requests
 
@@ -255,7 +253,7 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
 
-        # --- 로그인 그룹
+        # 로그인 그룹
         login_group = QtWidgets.QGroupBox("로그인 및 옵션")
         login_layout = QtWidgets.QFormLayout(login_group)
 
@@ -293,7 +291,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         main_layout.addWidget(login_group)
 
-        # --- 다운로드 폴더 설정
+        # 다운로드 폴더 설정
         folder_group = QtWidgets.QGroupBox("다운로드 설정")
         folder_layout = QtWidgets.QHBoxLayout(folder_group)
 
@@ -306,13 +304,13 @@ class MainWindow(QtWidgets.QMainWindow):
         folder_layout.addStretch()
         main_layout.addWidget(folder_group)
 
-        # --- 로그 출력창
+        # 로그 출력창
         self.log_text = QtWidgets.QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMinimumHeight(200)
         main_layout.addWidget(self.log_text, stretch=1)
 
-        # --- 다운로드 시작 버튼
+        # 다운로드 시작 버튼
         self.start_download_button = QtWidgets.QPushButton("다운로드 시작")
         self.start_download_button.clicked.connect(self.start_download)
         self.start_download_button.setEnabled(False)
@@ -326,7 +324,6 @@ class MainWindow(QtWidgets.QMainWindow):
         msg = (
             "[본 프로그램]\n"
             " - License: MIT License\n\n"
-
             "[사용 오픈소스 라이브러리]\n"
             "1) requests: Apache License 2.0\n"
             "2) tqdm: MIT License\n"
@@ -334,7 +331,6 @@ class MainWindow(QtWidgets.QMainWindow):
             "4) moviepy: MIT License\n"
             "5) PyQt5: GPL v3\n"
             "6) Selenium(WebDriver): Apache License 2.0\n\n"
-
             "각 라이브러리의 자세한 라이선스 전문은 해당 라이브러리 배포본이나 공식 저장소에서 확인하실 수 있습니다."
         )
         QMessageBox.information(self, "오픈소스 라이선스 정보", msg)
@@ -357,10 +353,8 @@ class MainWindow(QtWidgets.QMainWindow):
             msg_level = "DEBUG"
         elif message.startswith("[WARNING]"):
             msg_level = "WARNING"
-
         if level_order[msg_level] >= level_order[self.log_level]:
             self.log_text.append(message)
-
         self.statusBar().showMessage(message, 3000)
 
     def toggle_dark_theme(self, checked):
@@ -392,13 +386,12 @@ class MainWindow(QtWidgets.QMainWindow):
         instructions = (
             "사용법 안내:\n\n"
             "1. 사용자 이름과 비밀번호를 입력하고 '로그인 정보 저장'을 선택하면 암호화되어 저장됩니다.\n"
-            "   - 체크 해제 시 즉시 저장된 정보가 삭제됩니다.\n"
-            "2. '과목 정보 불러오기' 버튼을 누르면 워커가 persistent Chrome 창에서 로그인 후 전체 과목 목록(주차 정보 제외)을 불러옵니다.\n"
-            "3. 특정 과목 선택 시, 워커가 비동기로 사용 가능한 주차(학습 가능한 주차)를 가져와 UI를 업데이트합니다.\n"
-            "4. 다운로드 폴더를 지정한 후 '다운로드 시작' 버튼을 누르면 선택한 과목(및 주차부터)로 강의 다운로드가 진행됩니다.\n"
-            "5. 진행 상황은 로그 창 및 상태바에서 실시간으로 확인할 수 있습니다.\n"
-            "6. Options 메뉴에서 Chrome 강제 종료, Headless Mode, 로그 레벨을 설정할 수 있습니다.\n"
-            "7. 2차 본인인증 창이 나타나면, 사용자에게 본인인증 창 확인 후 '확인' 버튼을 누르라는 메시지가 표시됩니다."
+            "2. '과목 정보 불러오기' 버튼을 누르면 워커가 Chrome을 띄워 로그인 후 전체 과목 목록을 불러옵니다.\n"
+            "3. 특정 과목 선택 시 사용 가능한 주차를 가져와 UI에 표시합니다.\n"
+            "4. 다운로드 폴더를 지정하고 '다운로드 시작'을 누르면 해당 과목/주차 동영상이 다운로드 및 MP3 변환됩니다.\n"
+            "5. 진행 상황은 로그 창에 표시됩니다.\n"
+            "6. Options 메뉴에서 Chrome 강제 종료, Headless Mode, 로그 레벨 등을 설정할 수 있습니다.\n"
+            "7. 2차 본인인증 창이 뜨면, 인증 후 확인 버튼을 눌러주세요."
         )
         QMessageBox.information(self, "사용법", instructions)
 
@@ -470,7 +463,6 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         credentials.json 저장 (암호화)
         """
-        from encryption import fernet  # 필요 시 재임포트
         if self.save_credentials_checkbox.isChecked():
             data = {
                 "username": fernet.encrypt(self.username_input.text().strip().encode()).decode(),
@@ -515,14 +507,19 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             self.downloader_worker.moveToThread(self.worker_thread)
 
+            # --- 시그널 연결 ---
             self.downloader_worker.log_signal.connect(self.append_log)
             self.downloader_worker.subjects_signal.connect(self.update_subjects)
             self.downloader_worker.weeks_update_signal.connect(self.update_weeks)
             self.downloader_worker.auth_confirmation_needed.connect(self.show_auth_confirmation_dialog)
 
+            # 다운로드 완료 시그널 -> 다운로드 시작 버튼 재활성화
+            self.downloader_worker.finished_signal.connect(self.on_download_finished)
+
             self.worker_thread.started.connect(self.downloader_worker.setup)
             self.worker_thread.start()
 
+            # 살짝 지연 후 load_subjects() 실행
             QtCore.QTimer.singleShot(1000, self.downloader_worker.load_subjects)
         else:
             QtCore.QMetaObject.invokeMethod(
@@ -570,7 +567,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             QtCore.QMetaObject.invokeMethod(
                 self.downloader_worker, "load_weeks",
-                QtCore.QueuedConnection,
+                QtCore.Qt.QueuedConnection,
                 QtCore.Q_ARG(dict, subject_info)
             )
 
@@ -580,7 +577,6 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         self.week_combo.blockSignals(True)
         self.week_combo.clear()
-
         self.week_combo.addItem("전체 주차", userData=0)
 
         if weeks:
@@ -603,17 +599,20 @@ class MainWindow(QtWidgets.QMainWindow):
             QMessageBox.warning(self, "다운로드 폴더", "먼저 다운로드 폴더를 지정해 주세요.")
             return
 
+        # 다운로드 시작 버튼 비활성화 (완료 후 다시 활성화)
+        self.start_download_button.setEnabled(False)
+
+        # 과목 정보
         if self.subject_combo.currentIndex() == 0:
-            # 전체 과목
             subject_info = {"과목": "전체", "eclassRoom": ""}
         else:
             subject_info = self.subjects[self.subject_combo.currentIndex() - 1]
 
-        start_week = None
+        # 주차 정보
         if self.week_combo.isEnabled() and self.week_combo.currentData() is not None:
             start_week = self.week_combo.currentData()
         else:
-            start_week = 0
+            start_week = 0  # “전체 주차”
 
         self.append_log("다운로드 시작...")
 
@@ -624,10 +623,15 @@ class MainWindow(QtWidgets.QMainWindow):
             QtCore.Q_ARG(int, start_week)
         )
 
+    def on_download_finished(self):
+        """
+        Worker에서 finished_signal을 받으면 실행되는 슬롯.
+        다운로드가 모두 끝났으므로 버튼을 재활성화한다.
+        """
+        self.start_download_button.setEnabled(True)
+        self.append_log("다운로드 작업이 완료되었습니다.")
+
     def show_auth_confirmation_dialog(self):
-        """
-        2차 본인인증 창이 표시되었을 때 사용자에게 안내
-        """
         QMessageBox.information(self, "본인인증", "본인인증 창이 표시되었습니다.\n수동 인증 후 '확인' 버튼을 누르세요.")
         self.downloader_worker.auth_confirmed_signal.emit()
 
