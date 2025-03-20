@@ -1,4 +1,5 @@
-# --- 파일명: mainwindow.py ---
+# -*- coding: utf-8 -*-
+import datetime
 import os
 import json
 import re
@@ -41,9 +42,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def setup_ui(self):
         """
-        UI 레이아웃 및 메뉴바 구성
+        UI 레이아웃 및 메뉴바 구성 (진행바 및 개선된 스타일 시트 포함)
         """
-        # 스타일시트
+        # 스타일시트 (Light/Dark 모드 모두에 QProgressBar 스타일 추가)
         self.light_style = """
             QWidget {
                 font-family: "Segoe UI", sans-serif;
@@ -107,6 +108,15 @@ class MainWindow(QtWidgets.QMainWindow):
             QMenu::item:selected {
                 background-color: #0078D7;
                 color: white;
+            }
+            QProgressBar {
+                border: 1px solid #c0c0c0;
+                border-radius: 4px;
+                text-align: center;
+                background-color: #f7f7f7;
+            }
+            QProgressBar::chunk {
+                background-color: #0078D7;
             }
         """
 
@@ -175,11 +185,20 @@ class MainWindow(QtWidgets.QMainWindow):
                 background-color: #0099ff;
                 color: white;
             }
+            QProgressBar {
+                border: 1px solid #555555;
+                border-radius: 4px;
+                text-align: center;
+                background-color: #3c3f41;
+            }
+            QProgressBar::chunk {
+                background-color: #0099ff;
+            }
         """
 
         self.setStyleSheet(self.light_style)
 
-        # 메뉴바
+        # 메뉴바 구성
         menubar = self.menuBar()
 
         # View 메뉴
@@ -239,15 +258,15 @@ class MainWindow(QtWidgets.QMainWindow):
         help_action.triggered.connect(self.show_usage)
         help_menu.addAction(help_action)
 
-        # 오픈소스 라이선스 정보 (추가 기능)
+        # 오픈소스 라이선스 정보
         license_action = QtWidgets.QAction("오픈소스 라이선스 정보", self)
         license_action.triggered.connect(self.show_license_info)
         help_menu.addAction(license_action)
 
-        # 상태바
+        # 상태바 초기화
         self.statusBar().showMessage("준비됨")
 
-        # 중앙 위젯
+        # 중앙 위젯 및 레이아웃 구성
         central_widget = QtWidgets.QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QtWidgets.QVBoxLayout(central_widget)
@@ -311,6 +330,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.log_text.setMinimumHeight(200)
         main_layout.addWidget(self.log_text, stretch=1)
 
+        # 진행바 위젯 (예: 다운로드 진행률 표시)
+        self.progress_bar = QtWidgets.QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        main_layout.addWidget(self.progress_bar)
+
         # 다운로드 시작 버튼
         self.start_download_button = QtWidgets.QPushButton("다운로드 시작")
         self.start_download_button.clicked.connect(self.start_download)
@@ -319,22 +344,34 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def show_license_info(self):
         """
-        오픈소스 라이선스 정보 메시지 박스/다이얼로그를 표시한다.
-        이 프로그램의 라이선스는 MIT이며, 사용된 주요 라이브러리의 라이선스 정보를 간략히 고지한다.
+        GitHub에 공개된 LICENSE 파일 내용을 가져와서 표시
         """
-        msg = (
-            "[본 프로그램]\n"
-            " - License: MIT License\n\n"
-            "[사용 오픈소스 라이브러리]\n"
-            "1) requests: Apache License 2.0\n"
-            "2) tqdm: MIT License\n"
-            "3) cryptography: Apache License 2.0 혹은 BSD License\n"
-            "4) moviepy: MIT License\n"
-            "5) PyQt5: GPL v3\n"
-            "6) Selenium(WebDriver): Apache License 2.0\n\n"
-            "각 라이브러리의 자세한 라이선스 전문은 해당 라이브러리 배포본이나 공식 저장소에서 확인하실 수 있습니다."
-        )
-        QMessageBox.information(self, "오픈소스 라이선스 정보", msg)
+        license_url = "https://raw.githubusercontent.com/OneTop4458/e-cyber-downloader/refs/heads/main/LICENSE"
+        try:
+            response = requests.get(license_url, timeout=10)
+            if response.status_code == 200:
+                license_text = response.text
+            else:
+                license_text = "라이선스 정보를 불러올 수 없습니다. (HTTP 상태: {})".format(response.status_code)
+        except Exception as e:
+            license_text = f"오류 발생: {str(e)}"
+
+        # 스크롤 가능한 다이얼로그 생성
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle("오픈소스 라이선스 정보")
+        layout = QtWidgets.QVBoxLayout(dialog)
+
+        text_edit = QtWidgets.QTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.setPlainText(license_text)
+        layout.addWidget(text_edit)
+
+        close_button = QtWidgets.QPushButton("닫기")
+        close_button.clicked.connect(dialog.accept)
+        layout.addWidget(close_button)
+
+        dialog.resize(600, 400)
+        dialog.exec_()
 
     def set_log_level(self, level):
         self.log_level = level
@@ -346,16 +383,33 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def append_log(self, message):
         """
-        현재 설정된 log_level 이하의 중요도를 가진 로그만 출력
+        개선된 UI 로그창 출력:
+        - 타임스탬프 추가
+        - 로그 레벨에 따라 색상 지정
+        - 다크테마일 경우 기본 텍스트 색상을 흰색 계열로 지정
+        - 각 로그 항목에 여백 추가
         """
-        level_order = {"DEBUG": 0, "INFO": 1, "WARNING": 2}
-        msg_level = "INFO"
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if message.startswith("[DEBUG]"):
-            msg_level = "DEBUG"
+            color = "gray"
+        elif message.startswith("[INFO]"):
+            color = "green"
         elif message.startswith("[WARNING]"):
-            msg_level = "WARNING"
-        if level_order[msg_level] >= level_order[self.log_level]:
-            self.log_text.append(message)
+            color = "red"
+        else:
+            # 다크 테마이면 흰색 계열로, 그렇지 않으면 검정색으로 지정
+            if self.dark_theme_action.isChecked():
+                color = "#E0E0E0"
+            else:
+                color = "black"
+        formatted_message = (
+            f'<div style="margin:4px 0;">'
+            f'<span style="color:#888888; font-size:12px;">{timestamp}</span> '
+            f'<span style="color:{color};">{message}</span>'
+            f'</div>'
+        )
+        self.log_text.append(formatted_message)
         self.statusBar().showMessage(message, 3000)
 
     def toggle_dark_theme(self, checked):
@@ -512,6 +566,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 headless=self.headless
             )
             self.downloader_worker.moveToThread(self.worker_thread)
+            self.downloader_worker.progress_update_signal.connect(self.progress_bar.setValue)
 
             # 시그널 연결
             self.downloader_worker.log_signal.connect(self.append_log)
@@ -681,7 +736,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def check_for_update(self):
         """
-        GitHub에 있는 version.json을 불러와서 현재 버전(CURRENT_VERSION)과 비교
+        GitHub에 있는 version.json을 불러와서 현재 버전(CURRENT_VERSION)과 비교하고,
+        새 버전이 있으면 현재 실행 파일(자기 자신)을 업데이트 파일로 교체합니다.
         """
         try:
             response = requests.get(VERSION_URL, timeout=10)
@@ -696,7 +752,6 @@ class MainWindow(QtWidgets.QMainWindow):
                     msg = (
                         f"새 버전 {latest_version}이(가) {release_date}에 출시되었습니다.\n\n"
                         f"업데이트 노트:\n{notes}\n\n"
-                        f"다운로드 URL:\n{download_url}\n\n"
                         "업데이트 하시겠습니까?"
                     )
                     ret = QMessageBox.question(
@@ -704,7 +759,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         QMessageBox.Yes | QMessageBox.No
                     )
                     if ret == QMessageBox.Yes:
-                        QtGui.QDesktopServices.openUrl(QtCore.QUrl(download_url))
+                        self.perform_update(download_url, latest_version)
                     else:
                         self.append_log("업데이트가 취소되었습니다.")
                 else:
@@ -713,3 +768,93 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.append_log("버전 정보를 불러올 수 없습니다.")
         except Exception as e:
             self.append_log(f"버전 체크 중 오류 발생: {e}")
+
+def perform_update(self, download_url, latest_version):
+    """
+    업데이트 파일(자기 자신 새 버전)을 다운로드하여 현재 실행 파일을 교체하는 작업을 진행하는 동안,
+    별도의 업데이트 진행 UI를 띄워 진행률과 로그를 출력합니다.
+    """
+    try:
+        # 업데이트 진행 다이얼로그 생성 및 표시
+        progress_dialog = UpdateProgressDialog(self)
+        progress_dialog.show()
+
+        def update_progress(value):
+            progress_dialog.set_progress(value)
+
+        progress_dialog.append_log("업데이트 파일 다운로드 중...")
+        response = requests.get(download_url, stream=True, timeout=30)
+        response.raise_for_status()
+
+        import sys
+        if getattr(sys, 'frozen', False):
+            current_exe = sys.executable
+        else:
+            current_exe = os.path.abspath(__file__)
+        current_dir = os.path.dirname(current_exe)
+
+        update_temp = os.path.join(current_dir, f"update_{latest_version}.exe")
+        total_size = int(response.headers.get("content-length", 0))
+        downloaded = 0
+
+        with open(update_temp, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if total_size > 0:
+                        percentage = int(downloaded * 100 / total_size)
+                        update_progress(percentage)
+        progress_dialog.append_log(f"업데이트 파일 다운로드 완료: {update_temp}")
+
+        progress_dialog.append_log("업데이트를 실행합니다...")
+
+        # 배치 파일 생성: 현재 실행 파일 교체 후 재시작
+        bat_file = os.path.join(current_dir, "update.bat")
+        bat_contents = f"""@echo off
+ping 127.0.0.1 -n 5 > nul
+move /y "{update_temp}" "{current_exe}"
+start "" "{current_exe}"
+del "%~f0"
+"""
+        with open(bat_file, "w", encoding="utf-8") as f:
+            f.write(bat_contents)
+        progress_dialog.append_log("업데이트 배치 파일 생성 완료.")
+
+        import ctypes
+        ret = ctypes.windll.shell32.ShellExecuteW(
+            None, "runas", bat_file, None, current_dir, 0
+        )
+        if ret <= 32:
+            progress_dialog.append_log("업데이트 실행 실패. 관리자 권한이 필요합니다.")
+        else:
+            progress_dialog.append_log("업데이트 실행 성공. 프로그램이 종료됩니다.")
+            # 잠시 대기 후 종료
+            QtCore.QTimer.singleShot(3000, QtCore.QCoreApplication.quit)
+    except Exception as e:
+        progress_dialog.append_log(f"업데이트 수행 중 오류 발생: {e}")
+
+
+class UpdateProgressDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("업데이트 진행 중")
+        self.resize(400, 300)
+        layout = QtWidgets.QVBoxLayout(self)
+
+        self.log_text = QtWidgets.QTextEdit()
+        self.log_text.setReadOnly(True)
+        layout.addWidget(self.log_text)
+
+        self.progress_bar = QtWidgets.QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        layout.addWidget(self.progress_bar)
+
+    def append_log(self, message):
+        self.log_text.append(message)
+        # 스크린 갱신
+        QtWidgets.QApplication.processEvents()
+
+    def set_progress(self, value):
+        self.progress_bar.setValue(value)
+        QtWidgets.QApplication.processEvents()

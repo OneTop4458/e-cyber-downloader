@@ -1,10 +1,11 @@
-# --- 파일명: downloader.py ---
+# -*- coding: utf-8 -*-
 import os
 import re
 import time
 import requests
 import tqdm
 from moviepy import VideoFileClip, concatenate_videoclips
+from proglog import ProgressBarLogger
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -19,22 +20,37 @@ from selenium.common.exceptions import (
 )
 
 # 버전 체크용 상수
-CURRENT_VERSION = "1.0.1"
+CURRENT_VERSION = "1.0.0"
 VERSION_URL = "https://raw.githubusercontent.com/OneTop4458/e-cyber-downloader/refs/heads/main/version.json"
 
 
+class MP3ProgressLogger(ProgressBarLogger):
+    def __init__(self, progress_callback):
+        super().__init__()
+        self.progress_callback = progress_callback
+
+    def callback(self, **changes):
+        # changes에 progress 키가 있다면 진행률 업데이트 (0~1 범위)
+        if 'progress' in changes and self.progress_callback:
+            percentage = int(changes['progress'] * 100)
+            self.progress_callback(percentage)
+        super().callback(**changes)
+
+
 class ECyberDownloader:
-    def __init__(self, log_callback, download_dir, headless=False):
+    def __init__(self, log_callback, download_dir, headless=False, progress_callback=None):
         """
         log_callback: 로그 출력용 함수
         download_dir: 다운로드 받을 폴더 경로
         headless: Chrome headless 모드 사용 여부
+        progress_callback: 진행률 업데이트 콜백 함수 (예: 0~100 퍼센트)
         """
         self.log_callback = log_callback
         self.download_dir = download_dir
         self.headless = headless
+        self.progress_callback = progress_callback
         self.driver = None
-        self.auth_confirm_callback = None  # 2차 인증 콜백
+        self.auth_confirm_callback = None
 
     def log(self, message: str):
         """
@@ -280,6 +296,7 @@ class ECyberDownloader:
                     # 2) eclassRoom() 실행
                     js_command = f"eclassRoom('{subject_info['eclassRoom']}');"
                     self.driver.execute_script(js_command)
+                    self.add_overlay()
 
                     # 3) 주차 메뉴 클릭
                     WebDriverWait(self.driver, 10).until(
@@ -324,6 +341,8 @@ class ECyberDownloader:
                         EC.presence_of_element_located((By.ID, "dialog_secondary_auth"))
                     )
                     if auth_dialog.is_displayed():
+                        self.add_overlay()
+                        self.update_overlay_message("본인 인증 진행 해 주세요. (조작 하셔도 됩니다)")
                         self.log("본인인증 창 표시됨. 사용자 확인 대기...")
                         if callable(self.auth_confirm_callback):
                             self.auth_confirm_callback()
@@ -331,6 +350,7 @@ class ECyberDownloader:
                 except TimeoutException:
                     pass
 
+                self.add_overlay()
                 # 동영상 재생 페이지 로딩
                 try:
                     WebDriverWait(self.driver, 3).until(EC.alert_is_present())
@@ -396,7 +416,7 @@ class ECyberDownloader:
                     self.log("영상 엘리먼트를 찾지 못했습니다. 스킵.")
                     self.driver.switch_to.default_content()
                     return
-            
+
             # 인트로 영상 확인
             intro_video_url = "https://cms.catholic.ac.kr/settings/viewer/uniplayer/intro.mp4"
             if video_element.get_attribute("src") == intro_video_url:
@@ -486,7 +506,7 @@ class ECyberDownloader:
             if len(splitted_files) == 0:
                 self.log("다운로드된 영상 파일이 없습니다.")
             elif len(splitted_files) == 1:
-                self.log("분할 영상이 아니므로 합치기 과정 없이 진행합니다.")
+                self.log("분할 영상이 아니므로 합치기 과정 없이 mp3로 추출 진행합니다.")
                 final_merged_mp4 = splitted_files[0]
             else:
                 self.log("분할된 영상을 하나로 합치는 중...")
@@ -495,24 +515,28 @@ class ECyberDownloader:
                 merged_filepath = os.path.join(mp4_dir, merged_filename)
 
                 try:
-                    clips = [VideoFileClip(f) for f in splitted_files]
-                    final_clip = concatenate_videoclips(clips)
-                    final_clip.write_videofile(merged_filepath)
-
-                    for c in clips:
-                        c.close()
-
+                    valid_clips = []
+                    for f in splitted_files:
+                        try:
+                            clip = VideoFileClip(f)
+                            valid_clips.append(clip)
+                        except Exception as e:
+                            self.log(f"파일 {f} 로드 실패, 건너뛰기: {e}")
+                    if not valid_clips:
+                        raise Exception("유효한 영상 파일이 없습니다.")
+                    final_clip = concatenate_videoclips(valid_clips)
+                    # MoviePy의 내부 로깅을 끄고 진행바가 콘솔에 찍히지 않도록 logger=None 전달
+                    final_clip.write_videofile(merged_filepath, logger=None)
+                    for clip in valid_clips:
+                        clip.close()
                     final_merged_mp4 = merged_filepath
                     self.log(f"분할된 영상을 하나로 합쳤습니다: {merged_filepath}")
-
                     # 분할 영상들 제거 (원치 않으시면 주석처리)
                     for f in splitted_files:
                         if os.path.exists(f):
                             os.remove(f)
-
                 except Exception as merge_err:
                     self.log(f"분할 영상 병합 중 오류: {merge_err}")
-                    # 합치기 실패 시 첫 분할파일만 남김
                     final_merged_mp4 = splitted_files[0]
 
             # (C) 최종 영상 -> mp3 변환
@@ -521,7 +545,10 @@ class ECyberDownloader:
                     clip = VideoFileClip(final_merged_mp4)
                     base_name = os.path.splitext(os.path.basename(final_merged_mp4))[0]
                     mp3_path = os.path.join(mp3_dir, base_name + ".mp3")
-                    clip.audio.write_audiofile(mp3_path)
+                    self.log(f"MP3 변환 중 (진행률 표시 안됨): {mp3_path}")
+                    # 커스텀 로거 적용
+                    logger = MP3ProgressLogger(self.progress_callback) if self.progress_callback else None
+                    clip.audio.write_audiofile(mp3_path, logger=logger)
                     clip.close()
                     self.log(f"MP3 변환 완료: {mp3_path}")
                 except Exception as e:
@@ -542,29 +569,27 @@ class ECyberDownloader:
             response.raise_for_status()  # 4xx/5xx 에러 발생 시 예외
         except Exception as e:
             self.log(f"HTTP 요청 실패: {str(e)} - {url}")
-            return  # 여기서 곧바로 중단
+            return
 
         total_size = int(response.headers.get("content-length", 0))
         block_size = 1024
+        downloaded = 0
 
-        # 파일 열기
         try:
             with open(file_name, "wb") as mp4_file:
-                # with tqdm.tqdm(total=total_size, unit="B", unit_scale=True,
-                #                desc=file_name, ascii=True) as progress_bar:
-                #     for data in response.iter_content(block_size):
-                #         mp4_file.write(data)
-                #         progress_bar.update(len(data))
                 for chunk in response.iter_content(block_size):
                     if not chunk:
                         continue
                     mp4_file.write(chunk)
-            self.log(f"{file_name} 다운로드 완료.")
+                    downloaded += len(chunk)
+                    if total_size > 0 and self.progress_callback:
+                        percentage = int(downloaded * 100 / total_size)
+                        self.progress_callback(percentage)
         except Exception as e:
-            # 파일 열기나 쓰기 과정에서 문제가 생겼다면
             self.log(f"다운로드 실패: {str(e)} - {file_name}")
-            # 에러 발생 시 중단(return)해서 이후 NoneType 문제 방지
             return
+
+        self.log(f"{file_name} 다운로드 완료.")
 
     def get_video_duration(self, file_path: str):
         """

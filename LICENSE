@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2023 Byungjun Lee
+Copyright (c) 2023-2025 Byungjun Lee
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,24 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Disclaimer:
+
+The author of this software shall not be liable for any problems or issues
+arising from the use of this software. Users acknowledge and agree that
+they use this software at their own risk.
+
+Source Code: https://github.com/OneTop4458/e-cyber-downloader
+
+-------------------------------------------------------------
+Third-Party Libraries:
+
+1. requests: Apache License 2.0
+2. tqdm: MIT License
+3. cryptography: Apache License 2.0 or BSD License
+4. moviepy: MIT License
+5. PyQt5: GPL v3
+6. Selenium (WebDriver): Apache License 2.0
+
+Please refer to the full license text of each library within their respective
+distributions or official repositories.

@@ -1,4 +1,4 @@
-# --- 파일명: worker.py ---
+# -*- coding: utf-8 -*-
 import os
 import json
 import time
@@ -21,6 +21,7 @@ class DownloaderWorker(QtCore.QObject):
     # 2차 본인인증이 필요할 때
     auth_confirmation_needed = QtCore.pyqtSignal()
     auth_confirmed_signal = QtCore.pyqtSignal()
+    progress_update_signal = QtCore.pyqtSignal(int)
 
     def wait_for_auth_confirmation(self):
         loop = QtCore.QEventLoop()
@@ -51,7 +52,8 @@ class DownloaderWorker(QtCore.QObject):
         self.downloader = ECyberDownloader(
             log_callback=self.log_signal.emit,
             download_dir=self.download_dir,
-            headless=self.headless
+            headless=self.headless,
+            progress_callback=self.progress_update_signal.emit
         )
         self.downloader.setup_driver()
         self.downloader.login(self.username, self.password)
