@@ -58,5 +58,25 @@ ECyberDownloader/
 - 문제 발생 시 Issue 생성 혹은 PR 부탁드립니다.
 
 ## 📜 라이선스
-이 프로젝트는 MIT License 하에 배포됩니다.
-자세한 라이선스 정보는 프로그램 내 "오픈소스 라이선스 정보" 메뉴 또는 LICENSE 파일을 확인하시기 바랍니다.
+This project, **e-cyber-downloader**, is licensed under the **GNU General Public License v3.0 (GPLv3)**.
+
+By using PyQt5 (GPLv3), the entire project must also comply with GPLv3. You are free to:
+
+- Use, modify, and redistribute the software
+- As long as you also distribute your source code under the same license (GPLv3)
+
+🔗 Full license text is available in the [LICENSE](./LICENSE) file.
+
+### 🧩 Third-Party Libraries and Their Licenses
+
+| Library        | License                   |
+|----------------|----------------------------|
+| requests       | Apache License 2.0         |
+| tqdm           | MIT License                |
+| cryptography   | Apache License 2.0 / BSD   |
+| moviepy        | MIT License                |
+| PyQt5          | **GPL v3** (Main license)  |
+| Selenium       | Apache License 2.0         |
+
+All included libraries are compatible with GPLv3.
+
