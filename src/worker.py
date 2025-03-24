@@ -28,16 +28,16 @@ class DownloaderWorker(QtCore.QObject):
         self.auth_confirmed_signal.connect(loop.quit)
         loop.exec_()
 
-    def __init__(self, username, password, download_dir, headless=False, parent=None):
+    def __init__(self, username, password, download_dir, headless=False, school_code="catholic", school_domain="e-cyber.catholic.ac.kr", parent=None):
         super().__init__(parent)
         self.username = username
         self.password = password
         self.download_dir = download_dir
         self.headless = headless
-
+        self.school_code = school_code
+        self.school_domain = school_domain
         self.downloader = None
         self.all_subjects = []
-        # lectures_cache[eclassRoom] = { week_num: [ {title, script}, ... ], ... }
         self.lectures_cache = {}
 
     def auth_callback(self):
@@ -53,7 +53,9 @@ class DownloaderWorker(QtCore.QObject):
             log_callback=self.log_signal.emit,
             download_dir=self.download_dir,
             headless=self.headless,
-            progress_callback=self.progress_update_signal.emit
+            progress_callback=self.progress_update_signal.emit,
+            school_code=self.school_code,
+            school_domain=self.school_domain
         )
         self.downloader.setup_driver()
         self.downloader.login(self.username, self.password)

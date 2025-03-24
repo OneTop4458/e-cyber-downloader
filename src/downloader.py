@@ -20,7 +20,7 @@ from selenium.common.exceptions import (
 )
 
 # 버전 체크용 상수
-CURRENT_VERSION = "1.1.0"
+CURRENT_VERSION = "1.1.1"
 VERSION_URL = "https://raw.githubusercontent.com/OneTop4458/e-cyber-downloader/refs/heads/main/version.json"
 
 
@@ -38,12 +38,14 @@ class MP3ProgressLogger(ProgressBarLogger):
 
 
 class ECyberDownloader:
-    def __init__(self, log_callback, download_dir, headless=False, progress_callback=None):
+    def __init__(self, log_callback, download_dir, headless=False, progress_callback=None, school_code="catholic", school_domain="e-cyber.catholic.ac.kr"):
         """
         log_callback: 로그 출력용 함수
         download_dir: 다운로드 받을 폴더 경로
         headless: Chrome headless 모드 사용 여부
         progress_callback: 진행률 업데이트 콜백 함수 (예: 0~100 퍼센트)
+        school_code: 학교 코드 (기본값: catholic)
+        school_domain: 학교 도메인 (기본값: e-cyber.catholic.ac.kr)
         """
         self.log_callback = log_callback
         self.download_dir = download_dir
@@ -51,6 +53,8 @@ class ECyberDownloader:
         self.progress_callback = progress_callback
         self.driver = None
         self.auth_confirm_callback = None
+        self.school_code = school_code
+        self.school_domain = school_domain
 
     def log(self, message: str):
         """
@@ -141,7 +145,7 @@ class ECyberDownloader:
 
     def login(self, username: str, password: str):
         try:
-            self.navigate("https://e-cyber.catholic.ac.kr/ilos/main/member/login_form.acl")
+            self.navigate(f"https://{self.school_domain}/ilos/main/member/login_form.acl")
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.ID, "usr_id"))
             )
@@ -150,7 +154,7 @@ class ECyberDownloader:
             self.driver.find_element(By.ID, "login_btn").click()
             self.log("로그인 시도 중...")
             time.sleep(0.5)
-            self.navigate("https://e-cyber.catholic.ac.kr/ilos/mp/course_register_list_form.acl")
+            self.navigate(f"https://{self.school_domain}/ilos/mp/course_register_list_form.acl")
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.ID, "list_tab1"))
             )
@@ -209,7 +213,7 @@ class ECyberDownloader:
         lectures_map = {}
         try:
             self.log(f"{subject_info['과목']} 강의 목록 로드를 시작합니다.")
-            self.navigate("https://e-cyber.catholic.ac.kr/ilos/mp/course_register_list_form.acl")
+            self.navigate(f"https://{self.school_domain}/ilos/mp/course_register_list_form.acl")
             time.sleep(0.5)
             js_command = f"eclassRoom('{subject_info['eclassRoom']}');"
             self.driver.execute_script(js_command)
@@ -290,7 +294,7 @@ class ECyberDownloader:
 
                 # 1) 과목 메인 페이지 재접속
                 try:
-                    self.navigate("https://e-cyber.catholic.ac.kr/ilos/mp/course_register_list_form.acl")
+                    self.navigate(f"https://{self.school_domain}/ilos/mp/course_register_list_form.acl")
                     time.sleep(0.5)
 
                     # 2) eclassRoom() 실행
@@ -364,7 +368,7 @@ class ECyberDownloader:
                     continue
 
                 WebDriverWait(self.driver, 10).until(
-                    EC.url_to_be("https://e-cyber.catholic.ac.kr/ilos/st/course/online_view_form.acl")
+                    EC.url_to_be(f"https://{self.school_domain}/ilos/st/course/online_view_form.acl")
                 )
 
                 # 6) 동영상 다운로드 로직
@@ -418,7 +422,7 @@ class ECyberDownloader:
                     return
 
             # 인트로 영상 확인
-            intro_video_url = "https://cms.catholic.ac.kr/settings/viewer/uniplayer/intro.mp4"
+            intro_video_url = "https://{self.school_domain}/settings/viewer/uniplayer/intro.mp4"
             if video_element.get_attribute("src") == intro_video_url:
                 self.log("인트로 영상 발견. 다음 영상 찾기 시도 중...")
                 time.sleep(8)  # 인트로 대기

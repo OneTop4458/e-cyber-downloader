@@ -5,6 +5,8 @@ import subprocess
 import json
 import re
 import time
+import random
+import requests
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWidgets import QMessageBox
 
@@ -12,7 +14,8 @@ from encryption import fernet
 from worker import DownloaderWorker
 from downloader import CURRENT_VERSION, VERSION_URL
 
-import requests
+# 지원 학교 목록
+SCHOOLS_URL = "https://raw.githubusercontent.com/OneTop4458/e-cyber-downloader/refs/heads/main/schools.json"
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -27,13 +30,34 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker_thread = None
         self.subjects = []
         self.log_level = "DEBUG"
-        self.headless = False  # Headless 옵션을 저장할 변수
+        self.headless = False
+        self.school_name = ""
+        self.school_code = ""
+        self.school_domain = ""
+        self.weather_effect_widget = None
 
         # UI 초기화
         self.setup_ui()
-
-        # 설정 & 자격증명 로드
         self.load_config()
+
+        # 날씨 효과가 켜져 있다면 위젯 생성 (옵션 기본 on)
+        if self.weather_effect_action.isChecked():
+            self.create_weather_effect_widget()
+
+        # 최초 실행 시 (또는 config에 학교 정보가 없을 경우)에만 학교 선택 다이얼로그 표시
+        if not self.school_code:
+            dlg = SchoolSelectionDialog(self)
+            if dlg.exec_() == QtWidgets.QDialog.Accepted:
+                self.school_name, self.school_code, self.school_domain = dlg.get_values()
+                self.append_log(f"[INFO] 학교 선택: {self.school_name} ({self.school_code}, {self.school_domain})")
+                self.save_config()
+            else:
+                # 선택 취소 시 기본값 적용
+                self.school_name, self.school_code, self.school_domain = "가톨릭대학교", "catholic", "e-cyber.catholic.ac.kr"
+                self.append_log("[INFO] 학교 선택이 취소되어 기본값이 적용되었습니다.")
+                self.save_config()
+
+        # 자격증명 로드
         if os.path.exists("credentials.json"):
             self.save_credentials_checkbox.setChecked(True)
             self.load_credentials()
@@ -224,6 +248,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.headless_action.triggered.connect(self.toggle_headless)
         options_menu.addAction(self.headless_action)
 
+        # 날씨 효과 토글
+        self.weather_effect_action = QtWidgets.QAction("날씨 효과", self)
+        self.weather_effect_action.setCheckable(True)
+        self.weather_effect_action.setChecked(True)  # 기본 on
+        self.weather_effect_action.triggered.connect(self.toggle_weather_effects)
+        options_menu.addAction(self.weather_effect_action)
+
         # 로그 레벨 서브메뉴
         log_level_menu = options_menu.addMenu("Log Level")
         log_level_group = QtWidgets.QActionGroup(self)
@@ -263,6 +294,11 @@ class MainWindow(QtWidgets.QMainWindow):
         license_action = QtWidgets.QAction("오픈소스 라이선스 정보", self)
         license_action.triggered.connect(self.show_license_info)
         help_menu.addAction(license_action)
+
+        # 학교 설정
+        school_settings_action = QtWidgets.QAction("학교 설정", self)
+        school_settings_action.triggered.connect(self.open_school_settings)
+        options_menu.addAction(school_settings_action)
 
         # 상태바 초기화
         self.statusBar().showMessage("준비됨")
@@ -374,6 +410,18 @@ class MainWindow(QtWidgets.QMainWindow):
         dialog.resize(600, 400)
         dialog.exec_()
 
+    def open_school_settings(self):
+        """
+        학교 설정 표시
+        """
+        dlg = SchoolSelectionDialog(self, current_school_name=self.school_name,
+                                    current_school_code=self.school_code,
+                                    current_school_domain=self.school_domain)
+        if dlg.exec_() == QtWidgets.QDialog.Accepted:
+            self.school_name, self.school_code, self.school_domain = dlg.get_values()
+            self.append_log(f"[INFO] 학교 설정 변경: {self.school_name} ({self.school_code}, {self.school_domain})")
+            self.save_config()
+
     def set_log_level(self, level):
         self.log_level = level
         self.append_log(f"[INFO] 로그 레벨이 {level}(으)로 설정되었습니다.")
@@ -381,6 +429,26 @@ class MainWindow(QtWidgets.QMainWindow):
     def toggle_headless(self, checked):
         self.headless = checked
         self.append_log(f"[INFO] Headless Mode {'사용' if checked else '해제'}됨.")
+
+    def toggle_weather_effects(self, checked):
+        """옵션 메뉴에서 날씨 효과 on/off"""
+        if checked:
+            if not self.weather_effect_widget:
+                self.create_weather_effect_widget()
+            else:
+                self.weather_effect_widget.show()
+            self.append_log("[INFO] 날씨 효과 활성화됨.")
+        else:
+            if self.weather_effect_widget:
+                self.weather_effect_widget.hide()
+            self.append_log("[INFO] 날씨 효과 비활성화됨.")
+        self.save_config()
+
+    def create_weather_effect_widget(self):
+        """중앙 위젯 위에 날씨 효과 위젯을 오버레이로 추가"""
+        self.weather_effect_widget = WeatherEffectWidget(self.centralWidget())
+        self.weather_effect_widget.setGeometry(self.centralWidget().rect())
+        self.weather_effect_widget.show()
 
     def append_log(self, message):
         """
@@ -390,7 +458,6 @@ class MainWindow(QtWidgets.QMainWindow):
         - 다크테마일 경우 기본 텍스트 색상을 흰색 계열로 지정
         - 각 로그 항목에 여백 추가
         """
-        import datetime
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if message.startswith("[DEBUG]"):
             color = "gray"
@@ -446,7 +513,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "3. 특정 과목 선택 시, 해당 과목의 주차/강의 스크립트를 모두 로드하고, UI에는 '사용 가능한 주차'만 보여줍니다.\n"
             "4. 다운로드 폴더를 지정 후 '다운로드 시작'을 누르면 해당 과목/주차의 강의를 다운로드하며, mp3 변환까지 수행합니다.\n"
             "5. 진행 상황은 로그 창에 표시됩니다.\n"
-            "6. Options 메뉴에서 Chrome 강제 종료, Headless Mode, 로그 레벨 등을 설정할 수 있습니다.\n"
+            "6. Options 메뉴에서 Chrome 강제 종료, Headless Mode, 날씨 효과, 로그 레벨 등을 설정할 수 있습니다.\n"
             "7. 2차 본인인증 창이 뜨면, 인증 후 확인 버튼을 눌러주세요."
         )
         QMessageBox.information(self, "사용법", instructions)
@@ -467,13 +534,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 with open(config_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 download_folder = data.get("download_folder", "")
+                self.school_name = data.get("school_name", "")
+                self.school_code = data.get("school_code", "")
+                self.school_domain = data.get("school_domain", "")
                 if download_folder and os.path.isdir(download_folder):
                     self.download_dir = download_folder
                     self.dir_label.setText(f"다운로드 폴더: {download_folder}")
-
                 save_credentials = data.get("save_credentials", False)
                 self.save_credentials_checkbox.setChecked(save_credentials)
-
+                # 테마 설정
                 theme = data.get("theme", "light")
                 if theme == "dark":
                     self.setStyleSheet(self.dark_style)
@@ -481,6 +550,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 else:
                     self.setStyleSheet(self.light_style)
                     self.dark_theme_action.setChecked(False)
+                # 날씨 효과 옵션
+                weather_effects = data.get("weather_effects", True)
+                self.weather_effect_action.setChecked(weather_effects)
             except Exception as e:
                 self.append_log(f"[WARNING] 설정 로드 에러: {str(e)}")
 
@@ -493,7 +565,11 @@ class MainWindow(QtWidgets.QMainWindow):
         data = {
             "download_folder": self.download_dir,
             "save_credentials": self.save_credentials_checkbox.isChecked(),
-            "theme": theme
+            "theme": theme,
+            "school_name": self.school_name,
+            "school_code": self.school_code,
+            "school_domain": self.school_domain,
+            "weather_effects": self.weather_effect_action.isChecked()
         }
         try:
             with open(config_file, "w", encoding="utf-8") as f:
@@ -564,7 +640,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.downloader_worker = DownloaderWorker(
                 username, password,
                 self.download_dir,
-                headless=self.headless
+                headless=self.headless,
+                school_code=self.school_code,
+                school_domain=self.school_domain
             )
             self.downloader_worker.moveToThread(self.worker_thread)
             self.downloader_worker.progress_update_signal.connect(self.progress_bar.setValue)
@@ -706,6 +784,12 @@ class MainWindow(QtWidgets.QMainWindow):
         "웹 페이지에서 수동 인증 후 아래 'OK' 버튼을 누르세요.\n"
         "※ 웹 페이지에서 인증 번호 입력 후 확인 버튼 까지 눌러야 합니다.")
         self.downloader_worker.auth_confirmed_signal.emit()
+
+    def resizeEvent(self, event):
+        """중앙 위젯 크기 변경시 날씨 효과 위젯도 같이 조정"""
+        if self.weather_effect_widget:
+            self.weather_effect_widget.setGeometry(self.centralWidget().rect())
+        super().resizeEvent(event)
 
     def closeEvent(self, event):
         """
@@ -864,3 +948,305 @@ class UpdateProgressDialog(QtWidgets.QDialog):
     def set_progress(self, value):
         self.progress_bar.setValue(value)
         QtWidgets.QApplication.processEvents()
+
+
+class SchoolSelectionDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None, current_school_name="", current_school_code="", current_school_domain=""):
+        super().__init__(parent)
+        self.setWindowTitle("지원 학교 선택")
+        self.resize(400, 500)
+        layout = QtWidgets.QVBoxLayout(self)
+
+        self.search_edit = QtWidgets.QLineEdit()
+        self.search_edit.setPlaceholderText("학교 검색")
+        layout.addWidget(self.search_edit)
+
+        self.school_list = QtWidgets.QListWidget()
+        layout.addWidget(self.school_list)
+
+        self.count_label = QtWidgets.QLabel("총 지원 학교: 0개")
+        layout.addWidget(self.count_label)
+
+        button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        layout.addWidget(button_box)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+
+        self.schools = []
+        self.load_schools()
+        self.populate_list()
+        self.search_edit.textChanged.connect(self.filter_list)
+
+        # 만약 기존 선택값이 있으면 미리 선택
+        if current_school_name:
+            items = self.school_list.findItems(current_school_name, QtCore.Qt.MatchExactly)
+            if items:
+                self.school_list.setCurrentItem(items[0])
+
+    def load_schools(self):
+        try:
+            response = requests.get(SCHOOLS_URL, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                self.schools = data.get("schools", [])
+            else:
+                self.schools = []
+        except Exception as e:
+            self.schools = []
+
+    def populate_list(self):
+        self.school_list.clear()
+        for school in self.schools:
+            item_text = f"{school.get('name', '')} ({school.get('code', '')})"
+            self.school_list.addItem(item_text)
+        self.count_label.setText(f"총 지원 학교: {len(self.schools)}개")
+
+    def filter_list(self, text):
+        self.school_list.clear()
+        filtered = [s for s in self.schools if text.lower() in s.get('name', '').lower() or text.lower() in s.get('code', '').lower()]
+        for school in filtered:
+            item_text = f"{school.get('name', '')} ({school.get('code', '')})"
+            self.school_list.addItem(item_text)
+        self.count_label.setText(f"총 지원 학교: {len(filtered)}개")
+
+    def get_values(self):
+        current_item = self.school_list.currentItem()
+        if current_item:
+            selected_text = current_item.text()
+            for school in self.schools:
+                if school.get('name', '') in selected_text:
+                    return school.get('name', ''), school.get('code', ''), school.get('domain', '')
+        return "가톨릭대학교", "catholic", "e-cyber.catholic.ac.kr"
+
+
+class WeatherEffectWidget(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # 마우스 이벤트 무시
+        self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
+        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+
+        # 약 30 FPS (30ms 간격)로 애니메이션 업데이트
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.update_animation)
+        self.timer.start(30)
+
+        self.particles = []
+        self.weather_type = "none"  # 기본값: 효과 없음
+
+        # 창이 열리면 즉시 날씨 정보를 가져옴
+        QtCore.QTimer.singleShot(0, self.fetch_weather)
+
+    def seasonal_effect(self, month):
+        """
+        현재 월(month)에 따라 계절별 기본 효과를 반환.
+        봄: 벚꽃, 여름: 없음, 가을: 낙엽, 겨울: 눈은 날씨에 따라 처리.
+        """
+        if month in [3, 4, 5]:
+            return "cherry"  # 봄 = 벚꽃
+        elif month in [6, 7, 8]:
+            return "none"    # 여름 = 없음
+        elif month in [9, 10, 11]:
+            return "leaves"  # 가을 = 낙엽
+        elif month in [12, 1, 2]:
+            return "none"    # 겨울, 눈은 날씨에 따라 처리
+
+    def fetch_weather(self):
+        """
+        wttr.in API를 사용하여 경기도 성남시의 현재 날씨를 가져오고,
+        계절과 날씨 조건에 따라 weather_type을 결정한다.
+        """
+        now = datetime.datetime.now()
+        month = now.month
+        try:
+            url = "http://wttr.in/%EC%84%B1%EB%82%A8%EC%8B%9C?format=j1"
+            response = requests.get(url, timeout=5)
+            data = response.json()
+            desc = data["current_condition"][0]["weatherDesc"][0]["value"]
+            desc_lower = desc.lower()
+            if "rain" in desc_lower:
+                self.weather_type = "rain"
+            elif "snow" in desc_lower:
+                if month in [12, 1, 2]:
+                    self.weather_type = "snow"
+                else:
+                    self.weather_type = self.seasonal_effect(month)
+            else:
+                self.weather_type = self.seasonal_effect(month)
+        except Exception:
+            self.weather_type = self.seasonal_effect(month)
+        self.init_particles()
+
+    def init_particles(self):
+        """
+        위젯의 크기와 weather_type에 따라 파티클을 초기화한다.
+        weather_type이 "none"이면 파티클이 없도록 설정.
+        """
+        width = self.width() if self.width() > 0 else 500
+        height = self.height() if self.height() > 0 else 600
+        self.particles = []
+
+        if self.weather_type == "cherry":
+            count = 30
+        elif self.weather_type == "snow":
+            count = 50
+        elif self.weather_type == "rain":
+            count = 70
+        elif self.weather_type == "leaves":
+            count = 40
+        elif self.weather_type == "none":
+            count = 0
+        else:
+            count = 30
+
+        for _ in range(count):
+            x = random.uniform(0, width)
+            y = random.uniform(0, height)
+            if self.weather_type == "cherry":
+                size = random.uniform(10, 20)
+                vx = random.uniform(-1, 1)
+                vy = random.uniform(1, 3)
+                angle = random.uniform(0, 360)
+                rotation_speed = random.uniform(-1, 1)
+                particle = {
+                    "x": x, "y": y, "size": size,
+                    "vx": vx, "vy": vy,
+                    "angle": angle, "rotation_speed": rotation_speed
+                }
+            elif self.weather_type == "snow":
+                size = random.uniform(5, 10)
+                vx = random.uniform(-0.5, 0.5)
+                vy = random.uniform(0.5, 2)
+                particle = {"x": x, "y": y, "size": size, "vx": vx, "vy": vy}
+            elif self.weather_type == "rain":
+                size = random.uniform(10, 15)
+                vx = random.uniform(-0.2, 0.2)
+                vy = random.uniform(4, 8)
+                particle = {"x": x, "y": y, "size": size, "vx": vx, "vy": vy}
+            elif self.weather_type == "leaves":
+                size = random.uniform(8, 16)
+                vx = random.uniform(-0.8, 0.8)
+                vy = random.uniform(1, 4)
+                # leaves에도 회전 효과 추가하면 자연스러울 수 있음
+                angle = random.uniform(0, 360)
+                rotation_speed = random.uniform(-0.5, 0.5)
+                particle = {
+                    "x": x, "y": y, "size": size,
+                    "vx": vx, "vy": vy,
+                    "angle": angle, "rotation_speed": rotation_speed
+                }
+            else:
+                size = 10
+                vx = 0
+                vy = 1
+                particle = {"x": x, "y": y, "size": size, "vx": vx, "vy": vy}
+            self.particles.append(particle)
+
+    def update_animation(self):
+        """
+        각 파티클의 위치와 회전(해당되는 경우)을 업데이트한 후 화면을 다시 그린다.
+        """
+        width = self.width()
+        height = self.height()
+        for p in self.particles:
+            p["x"] += p["vx"]
+            p["y"] += p["vy"]
+            if self.weather_type in ["cherry", "leaves"] and "angle" in p:
+                p["angle"] += p["rotation_speed"]
+
+            if p["y"] > height:
+                p["y"] = -p["size"]
+                p["x"] = random.uniform(0, width)
+            if p["x"] < 0 or p["x"] > width:
+                p["x"] = random.uniform(0, width)
+        self.update()
+
+    def paintEvent(self, event):
+        """
+        weather_type에 따라 파티클을 그린다.
+        디자인 개선: 벚꽃과 낙엽 효과에 그라데이션 채우기와 드롭 섀도우 효과 적용.
+        """
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        is_dark = False
+        if self.parent() and hasattr(self.parent(), "dark_theme_action"):
+            is_dark = self.parent().dark_theme_action.isChecked()
+
+        for p in self.particles:
+            x, y, size = p["x"], p["y"], p["size"]
+            if self.weather_type == "cherry":
+                # 벚꽃 효과: 드롭 섀도우 효과 추가
+                center_x = x + size / 2
+                center_y = y + (size * 0.6) / 2
+                shadow_offset = 2
+                painter.save()
+                painter.translate(center_x + shadow_offset, center_y + shadow_offset)
+                painter.rotate(p.get("angle", 0))
+                painter.setBrush(QtGui.QColor(0, 0, 0, 50))  # 반투명 섀도우
+                painter.setPen(QtCore.Qt.NoPen)
+                painter.drawEllipse(QtCore.QRectF(-size/2, - (size*0.6)/2, size, size*0.6))
+                painter.restore()
+
+                # 벚꽃 효과: 그라데이션 채우기
+                gradient = QtGui.QRadialGradient(center_x, center_y, size/2)
+                if not is_dark:
+                    gradient.setColorAt(0, QtGui.QColor(255, 218, 229))  # 연한 핑크
+                    gradient.setColorAt(1, QtGui.QColor(255, 182, 193))  # 진한 핑크
+                else:
+                    gradient.setColorAt(0, QtGui.QColor(255, 182, 193))
+                    gradient.setColorAt(1, QtGui.QColor(255, 105, 180))
+                painter.save()
+                painter.translate(center_x, center_y)
+                painter.rotate(p.get("angle", 0))
+                painter.setBrush(gradient)
+                painter.setPen(QtCore.Qt.NoPen)
+                painter.drawEllipse(QtCore.QRectF(-size/2, - (size*0.6)/2, size, size*0.6))
+                painter.restore()
+
+            elif self.weather_type == "snow":
+                color = QtGui.QColor(255, 255, 255)
+                painter.setBrush(color)
+                painter.setPen(QtCore.Qt.NoPen)
+                painter.drawEllipse(QtCore.QRectF(x, y, size, size))
+            elif self.weather_type == "rain":
+                color = QtGui.QColor(173, 216, 230) if not is_dark else QtGui.QColor(30, 144, 255)
+                pen = QtGui.QPen(color, 2)
+                painter.setPen(pen)
+                painter.drawLine(QtCore.QPointF(x, y), QtCore.QPointF(x, y + size))
+            elif self.weather_type == "leaves":
+                # 낙엽 효과: 드롭 섀도우와 그라데이션 채우기
+                center_x = x + size / 2
+                center_y = y + (size * 0.8) / 2
+                shadow_offset = 2
+                painter.save()
+                painter.translate(center_x + shadow_offset, center_y + shadow_offset)
+                painter.rotate(p.get("angle", 0))
+                painter.setBrush(QtGui.QColor(0, 0, 0, 50))
+                painter.setPen(QtCore.Qt.NoPen)
+                painter.drawEllipse(QtCore.QRectF(-size/2, - (size*0.8)/2, size, size*0.8))
+                painter.restore()
+
+                gradient = QtGui.QRadialGradient(center_x, center_y, size/2)
+                if not is_dark:
+                    gradient.setColorAt(0, QtGui.QColor(255, 228, 181))  # 연한 살구색
+                    gradient.setColorAt(1, QtGui.QColor(205, 133, 63))   # 진한 갈색
+                else:
+                    gradient.setColorAt(0, QtGui.QColor(205, 133, 63))
+                    gradient.setColorAt(1, QtGui.QColor(160, 82, 45))
+                painter.save()
+                painter.translate(center_x, center_y)
+                painter.rotate(p.get("angle", 0))
+                painter.setBrush(gradient)
+                painter.setPen(QtCore.Qt.NoPen)
+                painter.drawEllipse(QtCore.QRectF(-size/2, - (size*0.8)/2, size, size*0.8))
+                painter.restore()
+            # "none"은 그릴 파티클이 없음
+
+    def resizeEvent(self, event):
+        """
+        위젯 크기 변경 시 파티클을 재초기화한다.
+        """
+        self.init_particles()
+        super().resizeEvent(event)
