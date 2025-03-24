@@ -1088,17 +1088,17 @@ class WeatherEffectWidget(QtWidgets.QWidget):
         self.particles = []
 
         if self.weather_type == "cherry":
-            count = 30
+            count = 15
         elif self.weather_type == "snow":
-            count = 50
+            count = 25
         elif self.weather_type == "rain":
-            count = 70
+            count = 35
         elif self.weather_type == "leaves":
-            count = 40
+            count = 20
         elif self.weather_type == "none":
             count = 0
         else:
-            count = 30
+            count = 15
 
         for _ in range(count):
             x = random.uniform(0, width)
