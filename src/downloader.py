@@ -422,7 +422,7 @@ class ECyberDownloader:
                     return
 
             # 인트로 영상 확인
-            intro_video_url = "https://{self.school_domain}/settings/viewer/uniplayer/intro.mp4"
+            intro_video_url = f"https://{self.school_domain}/settings/viewer/uniplayer/intro.mp4"
             if video_element.get_attribute("src") == intro_video_url:
                 self.log("인트로 영상 발견. 다음 영상 찾기 시도 중...")
                 time.sleep(8)  # 인트로 대기
